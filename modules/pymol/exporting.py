@@ -169,26 +169,27 @@ PYMOL API
             }
     
     def get_fastastr(selection="all", state=-1, quiet=1, _self=cmd):
+        '''
+DESCRIPTION
+
+    "get_fastastr" is an API-only function which returns the one-letter amino
+    acid sequence in FASTA format.
+        '''
+        state, quiet = int(state), int(quiet)
         dict = { 'seq' : {} }
         _self.iterate("("+selection+") and polymer and name ca",
-                    "seq[model]=seq.get(model,[]);seq[model].append(resn)",space=dict)
-        seq = dict['seq']
+                "seq.setdefault((model,chain),[]).append(resn)", space=dict)
         result = []
-        for obj in _self.get_names("objects",selection='('+selection+')'):
-            if seq.has_key(obj):
-                seq = map(lambda x:_resn_to_aa.get(x,'?'),seq[obj])
-                result.append(">%s"%obj)
-                seq = string.join(seq,'')
-                while len(seq):
-                    if len(seq)>=70:
-                        result.append(seq[0:70])
-                        seq=seq[70:]
-                    else:
-                        result.append(seq)
-                        break
+        for (obj, chain), resn_list in dict['seq'].iteritems():
+            seq = ''.join(_resn_to_aa.get(x,'?') for x in resn_list)
+            result.append(">%s_%s" % (obj, chain))
+            for i in range(0, len(seq), 70):
+                result.append(seq[i:i+70])
         result = string.join(result,'\n')
         if len(result):
             result = result + '\n'
+        if not quiet:
+            print result
         return result
 
     def get_pdbstr(selection="all", state=-1, ref='', ref_state=-1, quiet=1, _self=cmd):
