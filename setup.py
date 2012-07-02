@@ -7,7 +7,160 @@
 # pre-installed into the system.
 
 from distutils.core import setup, Extension
+from distutils.util import change_root
+from distutils.errors import *
+from distutils.command.install import install
+from distutils.command.build import build
+from glob import glob
+import shutil
 import sys, os
+
+class build_pymol(build):
+    vmd_plugins = 'crdplugin dcdplugin gromacsplugin'
+    user_options = build.user_options + [
+        ('vmd-plugins=', None, 'list of plugins to include'),
+        ]
+
+    def run(self):
+        self.vmd_plugins_enable()
+        build.run(self)
+
+    def vmd_plugins_enable(self):
+        name_list = self.vmd_plugins.split()
+        if not name_list:
+            return
+
+        src_path = 'contrib/uiuc/plugins/molfile_plugin/src'
+        inc_dirs = [src_path, 'contrib/uiuc/plugins/include']
+        sources = [os.path.join(src_path, f) for f in ['PlugIOManagerInit2.c', 'hash.c']]
+
+        for name in name_list:
+            try:
+                filename = glob(src_path + '/' + name + '.c*')[0]
+            except LookupError:
+                raise DistutilsOptionError('No such VMD plugin: ' + name)
+            sources.append(filename)
+
+        self.vmd_plugins_write_PIOMI(sources[0], name_list)
+        self.vmd_plugins_register(sources, inc_dirs)
+
+    def vmd_plugins_write_PIOMI(self, filename, name_list):
+        g = open(filename, 'w')
+
+        g.write('''
+        /* MACHINE GENERATED FILE, DO NOT EDIT! */
+        #include "vmdplugin.h"
+        typedef struct _PyMOLGlobals PyMOLGlobals;
+        int PlugIOManagerRegister(PyMOLGlobals *G, vmdplugin_t *);
+        ''')
+
+        # prototypes
+        for name in name_list:
+            g.write('''
+            int molfile_%s_init(void);
+            int molfile_%s_register(void *, vmdplugin_register_cb);
+            int molfile_%s_fini(void);
+            ''' % (name, name, name))
+
+        g.write('''
+        int PlugIOManagerInitAll(PyMOLGlobals *G) {
+            return 1
+        ''')
+        for name in name_list:
+            g.write('''
+            && (molfile_%s_init() == VMDPLUGIN_SUCCESS)
+            && (molfile_%s_register(G, (vmdplugin_register_cb)PlugIOManagerRegister) == VMDPLUGIN_SUCCESS)
+            ''' % (name, name))
+        g.write('''
+            ;
+        }
+
+        int PlugIOManagerFreeAll(void) {
+            return 1
+        ''')
+        for name in name_list:
+            g.write('''
+            && (molfile_%s_fini() == VMDPLUGIN_SUCCESS)
+            ''' % name)
+        g.write('''
+            ;
+        }
+        ''')
+
+        g.close()
+
+    def vmd_plugins_register(self, sources, inc_dirs):
+        for e in self.distribution.ext_modules:
+            if e.name == 'pymol._cmd':
+                e.sources += sources
+                e.include_dirs += inc_dirs
+                e.define_macros += [('_PYMOL_VMD_PLUGINS', None)]
+
+class install_pymol(install):
+    pymol_path = None
+    user_options = install.user_options + [
+        ('pymol-path=', None, 'PYMOL_PATH'),
+        ]
+
+    def finalize_options(self):
+        install.finalize_options(self)
+        if self.pymol_path is None:
+            self.pymol_path = os.path.join(self.install_libbase, 'pymol', 'pymol_path')
+        elif self.root is not None:
+            self.pymol_path = change_root(self.root, self.pymol_path)
+
+    def run(self):
+        install.run(self)
+        self.install_pymol_path()
+        self.make_launch_script()
+
+    def unchroot(self, name):
+        if self.root is not None and name.startswith(self.root):
+            return name[len(self.root):]
+        return name
+
+    def copy_tree_nosvn(self, src, dst):
+        ignore = lambda src, names: set(['.svn']).intersection(names)
+        if os.path.exists(dst):
+            shutil.rmtree(dst)
+        print 'copying', src, '->', dst
+        shutil.copytree(src, dst, ignore=ignore)
+
+    def copy(self, src, dst):
+        copy = self.copy_tree_nosvn if os.path.isdir(src) else self.copy_file
+        copy(src, dst)
+
+    def install_pymol_path(self):
+        self.mkpath(self.pymol_path)
+        for name in [ 'LICENSE', 'data', 'test', 'scripts', 'examples', ]:
+            self.copy(name, os.path.join(self.pymol_path, name))
+
+    def make_launch_script(self):
+        if sys.platform.startswith('win'):
+           launch_script = 'pymol.bat'
+        else:
+           launch_script = 'pymol'
+
+        python_exe = os.path.abspath(sys.executable)
+        pymol_file = self.unchroot(os.path.join(self.install_libbase, 'pymol', '__init__.py'))
+        pymol_path = self.unchroot(self.pymol_path)
+
+        with open(launch_script, 'w') as out:
+            if sys.platform.startswith('win'):
+                out.write('set PYMOL_PATH=' + pymol_path + os.linesep)
+                out.write('"%s" "%s"' % (python_exe, pymol_file))
+                out.write(' %1 %2 %3 %4 %5 %6 %7 %8 %9' + os.linesep)
+            else:
+                out.write('#!/bin/sh' + os.linesep)
+                if sys.platform.startswith('darwin'):
+                    out.write('if [ "$DISPLAY" == "" ]; then DISPLAY=":0.0"; export DISPLAY; fi' + os.linesep)
+                out.write('PYMOL_PATH="%s"; export PYMOL_PATH' % pymol_path + os.linesep)
+                out.write('"%s" "%s" "$@"' % (python_exe, pymol_file) + os.linesep)
+
+        os.chmod(launch_script, 0755)
+        self.mkpath(self.install_scripts)
+        self.copy(launch_script, self.install_scripts)
+
 
 #============================================================================
 if sys.platform=='win32': 
@@ -267,6 +420,7 @@ else: # linux or other unix
 
 
 distribution = setup ( # Distribution meta-data
+    cmdclass  = {'build': build_pymol, 'install': install_pymol},
     name      = "pymol",
     version   = "1.5.0.3", # see layer0/Version.h for updated version
     author    = "Schrodinger",
@@ -565,31 +719,3 @@ distribution = setup ( # Distribution meta-data
                   extra_compile_args = ext_comp_args,
                   )
         ])
-
-# make available for setup2.py
-try:
-    site_packages = distribution.command_obj['install'].install_libbase
-except KeyError:
-    print """
- Error: Please run, 'setup.py install' not 'setup build' or other variant.
-
-"""
-    sys.exit(2)
-
-f = open('setup3.py', 'w')
-print >> f, 'site_packages =', repr(site_packages)
-f.close()
-
-print '''
- After running:
-
-     python setup.py install
-     
- Please run, to complete the installation:
-
-     python setup2.py install
-
- To uninstall PyMOL, run:
-
-     python setup2.py uninstall
-'''
