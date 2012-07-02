@@ -1,4 +1,39 @@
 ----------------------------------------------------------------------
+This is a patched branch of the PyMOL open source tree and is
+considered experimental code. If you are looking for the upstream
+project, please visit:
+
+    https://sourceforge.net/projects/pymol
+
+This branch has:
+  * Several patches applied from the bug tracker at sourceforge.net
+  * A setup.py which makes setup2.py obsolete
+  * VMD plugins enabled by default
+----------------------------------------------------------------------
+
+UPDATE FROM SVN
+
+    git svn rebase
+
+DIFF TO SVN
+
+    git diff git-svn
+
+INSTALL
+
+    prefix=/opt/pymol-git
+    python setup.py build install \
+        --home=$prefix \
+        --install-lib=$prefix/modules \
+        --install-scripts=$prefix
+
+REMOTE
+
+    [svn-remote "svn"]
+        url = https://pymol.svn.sourceforge.net/svnroot/pymol/trunk/pymol
+        fetch = :refs/remotes/git-svn
+
+----------------------------------------------------------------------
 PyMOL is Copyright (c) Schrodinger, LLC
 http://www.pymol.org
 ----------------------------------------------------------------------
