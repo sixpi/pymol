@@ -177,7 +177,7 @@ DESCRIPTION
         '''
         state, quiet = int(state), int(quiet)
         dict = { 'seq' : {} }
-        _self.iterate("("+selection+") and polymer and name ca",
+        _self.iterate("("+selection+") and guide and name CA",
                 "seq.setdefault((model,chain),[]).append(resn)", space=dict)
         result = []
         for (obj, chain), resn_list in dict['seq'].iteritems():
