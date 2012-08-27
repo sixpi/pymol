@@ -11,14 +11,6 @@ This branch has:
   * VMD plugins enabled by default
 ----------------------------------------------------------------------
 
-UPDATE FROM SVN
-
-    git svn rebase
-
-DIFF TO SVN
-
-    git diff git-svn
-
 INSTALL
 
     prefix=/opt/pymol-git
@@ -27,11 +19,22 @@ INSTALL
         --install-lib=$prefix/modules \
         --install-scripts=$prefix
 
-REMOTE
+CHECKOUT WITH UPSTREAM BRANCH
 
-    [svn-remote "svn"]
-        url = https://pymol.svn.sourceforge.net/svnroot/pymol/trunk/pymol
-        fetch = :refs/remotes/git-svn
+    git svn clone -r 4001 https://pymol.svn.sourceforge.net/svnroot/pymol/trunk/pymol pymol.git
+    cd pymol.git
+    git branch upstream
+    git remote add origin git@github.com:speleo3/pymol.git
+    git pull origin master
+
+UPDATE FROM SVN
+
+    git checkout upstream && git svn rebase && git checkout master
+    git merge upstream
+
+DIFF TO SVN
+
+    git diff git-svn
 
 ----------------------------------------------------------------------
 PyMOL is Copyright (c) Schrodinger, LLC
