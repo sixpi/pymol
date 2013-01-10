@@ -30,7 +30,7 @@ CHECKOUT WITH UPSTREAM BRANCH
 UPDATE FROM SVN
 
     git checkout upstream && git svn rebase && git checkout master
-    git merge upstream
+    git merge -m 'Merge upstream svn' upstream
 
 DIFF TO SVN
 

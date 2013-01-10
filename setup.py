@@ -15,6 +15,42 @@ from glob import glob
 import shutil
 import sys, os
 
+import distutils.ccompiler
+import multiprocessing.pool
+
+class monkeypatch(object):
+    '''Decorator for replacing a method in a class or module'''
+    def __init__(self, cls, name=None):
+        self.cls = cls
+        self.name = name
+    def __call__(self, func):
+        name = self.name or func.__name__
+        setattr(self.cls, name, func)
+        return func
+
+@monkeypatch(distutils.ccompiler.CCompiler, 'compile')
+def parallel_compile(self, sources, output_dir=None, macros=None,
+        include_dirs=None, debug=0, extra_preargs=None, extra_postargs=None,
+        depends=None):
+    '''
+    http://stackoverflow.com/questions/11013851/speeding-up-build-process-with-distutils
+    '''
+    # those lines are copied from distutils.ccompiler.CCompiler directly
+    macros, objects, extra_postargs, pp_opts, build = self._setup_compile(
+            output_dir, macros, include_dirs, sources, depends, extra_postargs)
+    cc_args = self._get_cc_args(pp_opts, debug, extra_preargs)
+
+    # parallel code
+    def _single_compile(obj):
+        try:
+            src, ext = build[obj]
+        except KeyError:
+            return
+        self._compile(obj, src, ext, cc_args, extra_postargs, pp_opts)
+
+    multiprocessing.pool.ThreadPool().map(_single_compile, objects)
+    return objects
+
 class build_pymol(build):
     vmd_plugins = 'crdplugin dcdplugin gromacsplugin'
     user_options = build.user_options + [
