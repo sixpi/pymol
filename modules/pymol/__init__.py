@@ -167,7 +167,7 @@ if pymol_launch != 3: # if this isn't a dry run
 
         pymol_launch = -1 # non-threaded launch import flag
         # NOTE: overrides current value (if any)
-
+        
         # make sure we import pymol from correct path
         pymol_base = os.path.dirname(os.path.realpath(__file__))
         site_packages = os.path.dirname(pymol_base)
@@ -177,7 +177,7 @@ if pymol_launch != 3: # if this isn't a dry run
             sys.path.insert(0, site_packages)
 
         import pymol
-
+        
         pymol_launch = 1 # consume main thread for use by PyMOL
     
     elif pymol_launch == -1: # just passing through
@@ -378,6 +378,10 @@ if pymol_launch != 3: # if this isn't a dry run
                 cmd.set("use_shaders", 0)
                 cmd.set("sphere_mode", 0)
 
+            elif vendor == 'nouveau':
+                cmd.set("use_shaders", 0)
+                cmd.set("sphere_mode", 0)
+
             else:
                 if ("Intel" in renderer) and (("HD" in renderer) or ("Express" in renderer)):
 
@@ -478,7 +482,13 @@ if pymol_launch != 3: # if this isn't a dry run
         _cmd.runpymol(_COb,block_input_hook) # only returns if we are running pretend GLUT
 #      from pymol.embed import wxpymol # never returns
 
-    from pymol import _cmd
+    try:
+        # try to do global import of built-in module
+        _cmd = __import__('_cmd', level=0)
+    except ImportError:
+        # import shared library
+        from pymol import _cmd
+
     from pymol import cmd
 
     global _COb
