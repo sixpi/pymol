@@ -169,30 +169,29 @@ PYMOL API
             }
     
     def get_fastastr(selection="all", state=-1, quiet=1, _self=cmd):
-        '''
-DESCRIPTION
-
-    "get_fastastr" is an API-only function which returns the one-letter amino
-    acid sequence in FASTA format.
-        '''
-        state, quiet = int(state), int(quiet)
         dict = { 'seq' : {} }
         # we use (alt '' or alt 'A') because 'guide' picks up 
         # non-canonical structures: eg, 1ejg has residue 22 as a SER and 
         # PRO, which guide will report twice
         _self.iterate("("+selection+") and polymer and name ca and (alt '' or alt 'A')",
-                "seq.setdefault((model,chain),[]).append(resn)", space=dict)
+                    "seq[model]=seq.get(model,[]);seq[model].append(resn)",space=dict)
+        seq = dict['seq']
         result = []
-        for (obj, chain), resn_list in dict['seq'].iteritems():
-            seq = ''.join(_resn_to_aa.get(x,'?') for x in resn_list)
-            result.append(">%s_%s" % (obj, chain))
-            for i in range(0, len(seq), 70):
-                result.append(seq[i:i+70])
+        for obj in _self.get_names("objects",selection='('+selection+')'):
+            if seq.has_key(obj):
+                cur_seq = map(lambda x:_resn_to_aa.get(x,'?'),seq[obj])
+                result.append(">%s"%obj)
+                cur_seq = string.join(cur_seq,'')
+                while len(cur_seq):
+                    if len(cur_seq)>=70:
+                        result.append(cur_seq[0:70])
+                        cur_seq=cur_seq[70:]
+                    else:
+                        result.append(cur_seq)
+                        break
         result = string.join(result,'\n')
         if len(result):
             result = result + '\n'
-        if not quiet:
-            print result
         return result
 
     def get_pdbstr(selection="all", state=-1, ref='', ref_state=-1, quiet=1, _self=cmd):
@@ -316,9 +315,12 @@ ARGUMENTS
 
     filename = string: file path to be written
     
-    width = integer: width in pixels {default: 0 (current)}
+    width = integer or string: width in pixels (without units), inches (in)
+    or centimeters (cm). If unit suffix is given, dpi argument is required
+    as well. If only one of width or height is given, the aspect ratio of
+    the viewport is preserved. {default: 0 (current)}
 
-    height = integer: height in pixels {default: 0 (current)}
+    height = integer or string: height (see width) {default: 0 (current)}
 
     dpi = float: dots-per-inch {default -1.0 (unspecified)}
 
@@ -333,8 +335,6 @@ EXAMPLES
 NOTES
 
     PNG is the only image format supported by PyMOL.
-
-    The width and height arguments support optional units "in" and "cm".
 
 SEE ALSO
 

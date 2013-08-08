@@ -54,7 +54,7 @@ void CoordSetFree(CoordSet * I);
 void CoordSetRender(CoordSet * I, RenderInfo * info);
 void CoordSetEnumIndices(CoordSet * I);
 void CoordSetInvalidateRep(CoordSet * I, int type, int level);
-void CoordSetExtendIndices(CoordSet * I, int nAtom);
+int CoordSetExtendIndices(CoordSet * I, int nAtom);
 void CoordSetAppendIndices(CoordSet * I, int offset);
 
 
@@ -166,6 +166,7 @@ int CoordSetFromPyList(PyMOLGlobals * G, PyObject * list, CoordSet ** cs)
     if(!ok) {
       if(I)
         CoordSetFree(I);
+        *cs = NULL;
     } else {
       *cs = I;
     }
@@ -239,53 +240,65 @@ void CoordSetAdjustAtmIdx(CoordSet * I, int *lookup, int nAtom)
 
 
 /*========================================================================*/
-void CoordSetMerge(ObjectMolecule *OM, CoordSet * I, CoordSet * cs)
+int CoordSetMerge(ObjectMolecule *OM, CoordSet * I, CoordSet * cs)
 {                               /* must be non-overlapping */
   int nIndex;
   int a, i0;
-
+  int ok = true;
   /* calculate new size and make room for new data */
   nIndex = I->NIndex + cs->NIndex;
   VLASize(I->IdxToAtm, int, nIndex);
-  VLACheck(I->Coord, float, nIndex * 3);
-
-  for(a = 0; a < cs->NIndex; a++) {
-    i0 = a + I->NIndex;
-    I->IdxToAtm[i0] = cs->IdxToAtm[a];
-    if (OM->DiscreteFlag){
-      int idx = cs->IdxToAtm[a];
-      OM->DiscreteAtmToIdx[idx] = i0;
-      OM->DiscreteCSet[idx] = I;
-    } else {
-      I->AtmToIdx[cs->IdxToAtm[a]] = i0;
+  CHECKOK(ok, I->IdxToAtm);
+  if (ok)
+    VLACheck(I->Coord, float, nIndex * 3);
+  CHECKOK(ok, I->Coord);
+  if (ok){
+    for(a = 0; a < cs->NIndex; a++) {
+      i0 = a + I->NIndex;
+      I->IdxToAtm[i0] = cs->IdxToAtm[a];
+      if (OM->DiscreteFlag){
+	int idx = cs->IdxToAtm[a];
+	OM->DiscreteAtmToIdx[idx] = i0;
+	OM->DiscreteCSet[idx] = I;
+      } else {
+	I->AtmToIdx[cs->IdxToAtm[a]] = i0;
+      }
+      copy3f(cs->Coord + a * 3, I->Coord + i0 * 3);
     }
-    copy3f(cs->Coord + a * 3, I->Coord + i0 * 3);
   }
-  if(cs->LabPos) {
-    if(!I->LabPos)
-      I->LabPos = VLACalloc(LabPosType, nIndex);
-    else
+  if (ok){
+    if(cs->LabPos) {
+      if(!I->LabPos)
+	I->LabPos = VLACalloc(LabPosType, nIndex);
+      else
+	VLACheck(I->LabPos, LabPosType, nIndex);
+      if(I->LabPos) {
+	UtilCopyMem(I->LabPos + I->NIndex, cs->LabPos, sizeof(LabPosType) * cs->NIndex);
+      }
+    } else if(I->LabPos) {
       VLACheck(I->LabPos, LabPosType, nIndex);
-    if(I->LabPos) {
-      UtilCopyMem(I->LabPos + I->NIndex, cs->LabPos, sizeof(LabPosType) * cs->NIndex);
     }
-  } else if(I->LabPos) {
-    VLACheck(I->LabPos, LabPosType, nIndex);
+    CHECKOK(ok, I->LabPos);
   }
-  if(cs->RefPos) {
-    if(!I->RefPos)
-      I->RefPos = VLACalloc(RefPosType, nIndex);
-    else
+  if (ok){
+    if(cs->RefPos) {
+      if(!I->RefPos)
+	I->RefPos = VLACalloc(RefPosType, nIndex);
+      else
+	VLACheck(I->RefPos, RefPosType, nIndex);
+      if(I->RefPos) {
+	UtilCopyMem(I->RefPos + I->NIndex, cs->RefPos, sizeof(RefPosType) * cs->NIndex);
+      }
+    } else if(I->RefPos) {
       VLACheck(I->RefPos, RefPosType, nIndex);
-    if(I->RefPos) {
-      UtilCopyMem(I->RefPos + I->NIndex, cs->RefPos, sizeof(RefPosType) * cs->NIndex);
     }
-  } else if(I->RefPos) {
-    VLACheck(I->RefPos, RefPosType, nIndex);
+    CHECKOK(ok, I->RefPos);
   }
-  if(I->fInvalidateRep)
+  if(ok && I->fInvalidateRep)
     I->fInvalidateRep(I, cRepAll, cRepInvAll);
   I->NIndex = nIndex;
+
+  return ok;
 }
 
 
@@ -680,8 +693,60 @@ void CoordSetFracToReal(CoordSet * I, CCrystal * cryst)
 
 
 /*========================================================================*/
+static char RotateU(double *matrix, float *anisou)
+/* Rotates the ANISOU vector
+ *
+ * matrix: flat 4x4, but only rotation (upper left 3x3) is considered
+ * anisou: has 6 elements (of symmetric 3x3) and will be rotated in-place
+ */
+{
+  int i, j, k;
+  float Re[3][3];
+  double e_val[3], e_vec[3][3];
+  double U[3][3] = {
+    { anisou[0], anisou[3], anisou[4] },
+    { anisou[3], anisou[1], anisou[5] },
+    { anisou[4], anisou[5], anisou[2] },
+  };
+
+  // e_val, e_vec = linalg.eigh(U)
+  if(!xx_matrix_jacobi_solve(*e_vec, e_val, &i, *U, 3))
+    return false;
+
+  // Re = dot(matrix[:3,:3], e_vec)
+  for (i = 0; i < 3; i++)
+    for (j = 0; j < 3; j++) {
+      Re[i][j] = 0.0;
+      for (k = 0; k < 3; k++)
+        Re[i][j] += matrix[i * 4 + k] * e_vec[k][j];
+    }
+
+  // U = dot(Re * e_val, Re.T)
+  for (i = 0; i < 3; i++)
+    for (j = 0; j <= i; j++) {
+      U[i][j] = 0.0;
+      for (k = 0; k < 3; k++)
+        U[i][j] += Re[i][k] * e_val[k] * Re[j][k];
+    }
+
+  anisou[0] = U[0][0];
+  anisou[1] = U[1][1];
+  anisou[2] = U[2][2];
+  anisou[3] = U[1][0];
+  anisou[4] = U[2][0];
+  anisou[5] = U[2][1];
+
+  return true;
+}
+
+/*========================================================================*/
 void CoordSetAtomToPDBStrVLA(PyMOLGlobals * G, char **charVLA, int *c,
-                             AtomInfoType * ai, float *v, int cnt, PDBInfoRec * pdb_info)
+                             AtomInfoType * ai, float *v, int cnt, PDBInfoRec * pdb_info, double *matrix)
+/*
+ * v: 3x1 vertex in final output space
+ * matrix: 4x4 homogenous transformation matrix from model space to output
+ *         space (view matrix * state matrix). Used for ANISOU.
+ */
 {
   char *aType;
   AtomName name;
@@ -691,8 +756,8 @@ void CoordSetAtomToPDBStrVLA(PyMOLGlobals * G, char **charVLA, int *c,
 
   char formalCharge[4];
   int rl;
-  int literal = (int) SettingGet(G, cSetting_pdb_literal_names);
-  int reformat = (int) SettingGet(G, cSetting_pdb_reformat_names_mode);
+  int literal = SettingGetGlobal_b(G, cSetting_pdb_literal_names);
+  int reformat = SettingGetGlobal_i(G, cSetting_pdb_reformat_names_mode);
   WordType x, y, z;
 
   formalCharge[0] = 0;
@@ -853,7 +918,7 @@ void CoordSetAtomToPDBStrVLA(PyMOLGlobals * G, char **charVLA, int *c,
       }
     }
   }
-  if((int) SettingGet(G, cSetting_pdb_retain_ids)) {
+  if(SettingGetGlobal_b(G, cSetting_pdb_retain_ids)) {
     cnt = ai->id - 1;
   }
   if(cnt > 99998)
@@ -862,17 +927,38 @@ void CoordSetAtomToPDBStrVLA(PyMOLGlobals * G, char **charVLA, int *c,
   name[4] = 0;
 
   if((!pdb_info) || (!pdb_info->is_pqr_file)) { /* relying upon short-circuit */
+    short linelen;
     sprintf(x, "%8.3f", v[0]);
     x[8] = 0;
     sprintf(y, "%8.3f", v[1]);
     y[8] = 0;
     sprintf(z, "%8.3f", v[2]);
     z[8] = 0;
-    (*c) +=
+    linelen =
       sprintf((*charVLA) + (*c),
               "%6s%5i %-4s%1s%-4s%1s%5s   %s%s%s%6.2f%6.2f      %-4s%2s%2s\n", aType,
               cnt + 1, name, ai->alt, resn, ai->chain, resi, x, y, z, ai->q, ai->b,
               ai->segi, ai->elem, formalCharge);
+    if(ai->U11 || ai->U22 || ai->U33 || ai->U12 || ai->U13 || ai->U23) {
+      // Warning: anisotropic temperature factors are not rotated with the object matrix
+      // Columns 7 - 27 and 73 - 80 are identical to the corresponding ATOM/HETATM record.
+      char *atomline = (*charVLA) + (*c);
+      char *anisoline = atomline + linelen;
+      float anisou[6] = { ai->U11, ai->U22, ai->U33, ai->U12, ai->U13, ai->U23 };
+      if(matrix && !RotateU(matrix, anisou)) {
+        PRINTFB(G, FB_CoordSet, FB_Errors) "RotateU failed\n" ENDFB(G);
+        return;
+      }
+      strncpy(anisoline + 6, atomline + 6, 22);
+      sprintf(anisoline + 28,
+          "%7.0f%7.0f%7.0f%7.0f%7.0f%7.0f",
+          anisou[0] * 1e4, anisou[1] * 1e4, anisou[2] * 1e4,
+          anisou[3] * 1e4, anisou[4] * 1e4, anisou[5] * 1e4);
+      strcpy(anisoline + 70, atomline + 70);
+      strncpy(anisoline, "ANISOU", 6);
+      (*c) += linelen;
+    }
+    (*c) += linelen;
   } else {
     Chain alt;
     if(pdb_info->is_pqr_file && pdb_info->pqr_workarounds) {
@@ -927,7 +1013,7 @@ void CoordSetAtomToPDBStrVLA(PyMOLGlobals * G, char **charVLA, int *c,
 
 /*========================================================================*/
 PyObject *CoordSetAtomToChemPyAtom(PyMOLGlobals * G, AtomInfoType * ai, float *v,
-                                   float *ref, int index)
+                                   float *ref, int index, double *matrix)
 {
 #ifdef _PYMOL_NOPY
   return NULL;
@@ -937,6 +1023,12 @@ PyObject *CoordSetAtomToChemPyAtom(PyMOLGlobals * G, AtomInfoType * ai, float *v
   if(!atom)
     ok = ErrMessage(G, "CoordSetAtomToChemPyAtom", "can't create atom");
   else {
+    float tmp_array[6] = { ai->U11, ai->U22, ai->U33, ai->U12, ai->U13, ai->U23 };
+
+    if(matrix) {
+      RotateU(matrix, tmp_array);
+    }
+
     PConvFloat3ToPyObjAttr(atom, "coord", v);
     if(ref)
       PConvFloat3ToPyObjAttr(atom, "ref_coord", ref);
@@ -954,13 +1046,6 @@ PyObject *CoordSetAtomToChemPyAtom(PyMOLGlobals * G, AtomInfoType * ai, float *v
     PConvFloatToPyObjAttr(atom, "q", ai->q);
     PConvFloatToPyObjAttr(atom, "b", ai->b);
     {
-      float tmp_array[6];
-      tmp_array[0] = ai->U11;
-      tmp_array[1] = ai->U22;
-      tmp_array[2] = ai->U33;
-      tmp_array[3] = ai->U12;
-      tmp_array[4] = ai->U13;
-      tmp_array[5] = ai->U23;
       {
         PyObject *tmp_obj = PConvFloatArrayToPyList(tmp_array, 6);
         if(tmp_obj) {
@@ -1012,7 +1097,7 @@ void CoordSetAtomToTERStrVLA(PyMOLGlobals * G, char **charVLA, int *c, AtomInfoT
   ResIdent resi;
   ResName resn;
   int rl;
-  int retain_ids = (int) SettingGet(G, cSetting_pdb_retain_ids);
+  int retain_ids = SettingGetGlobal_b(G, cSetting_pdb_retain_ids);
   int ter_id;
 
   strcpy(resn, ai->resn);       /* enforce 3-letter residue name in PDB files */
@@ -1163,8 +1248,11 @@ void CoordSetInvalidateRep(CoordSet * I, int type, int level)
   if(I->Active[rep]&&(!G->Interrupt)) {\
     if(!I->Rep[rep]) {\
       I->Rep[rep]=new_fn(I,state);\
-      if(I->Rep[rep]) \
+      if(I->Rep[rep]){ \
          I->Rep[rep]->fNew=(struct Rep *(*)(struct CoordSet *,int state))new_fn;\
+      } else {  \
+	I->Active[rep] = false;			\
+      }         \
     } else {\
       if(I->Rep[rep]->fUpdate)\
          I->Rep[rep] = I->Rep[rep]->fUpdate(I->Rep[rep],I,state,rep);\
@@ -1179,19 +1267,21 @@ static void CoordSetUpdate(CoordSet * I, int state)
   int a;
   int i;
   PyMOLGlobals *G = I->Obj->Obj.G;
-
   ObjectMolecule *obj;
+  int ok = true;
+
   obj = I->Obj;
 
-  if(Feedback(G, FB_CoordSet, FB_Blather)) {
-    printf(" CoordSetUpdate-Entered: object %s state %d cset %p\n",
-           I->Obj->Obj.Name, state, (void *) I);
-  }
+  PRINTFB(G, FB_CoordSet, FB_Blather) " CoordSetUpdate-Entered: object %s state %d cset %p\n",
+    I->Obj->Obj.Name, state, (void *) I
+    ENDFB(G);
+
 
   if(!I->Color) {               /* colors invalidated */
     I->Color = VLAlloc(int, I->NIndex);
-    if(I->Color) {
-      if(obj->DiscreteFlag){
+    CHECKOK(ok, I->Color);
+    if(ok && I->Color) {
+      if(obj->DiscreteFlag) {
         for(a = 0; a < I->Obj->NAtom; a++) {
           if(obj->DiscreteCSet[a] == I) {
             i = obj->DiscreteAtmToIdx[a];
@@ -1200,12 +1290,19 @@ static void CoordSetUpdate(CoordSet * I, int state)
           }
 	}
       } else {
-	for(a = 0; a < I->Obj->NAtom; a++) {
-	  i = I->AtmToIdx[a];
-          if(i >= 0)
+        for(a = 0; a < I->Obj->NAtom; a++) {
+          i = I->AtmToIdx[a];
+          if(i >= 0){
             I->Color[i] = obj->AtomInfo[a].color;
+	  }
         }
       }
+    }
+    if (!ok){
+      PRINTFB(G, FB_CoordSet, FB_Errors) " CoordSetUpdate: Color was not allocated properly I->NIndex=%d\n",
+	I->NIndex
+	ENDFB(G);
+      
     }
   }
   OrthoBusyFast(G, 0, cRepCnt);
@@ -1232,7 +1329,6 @@ static void CoordSetUpdate(CoordSet * I, int state)
     printf(" CoordSetUpdate-Leaving: object %s state %d cset %p\n",
            I->Obj->Obj.Name, state, (void *) I);
   }
-
 }
 
 
@@ -1298,12 +1394,37 @@ void CoordSetRender(CoordSet * I, RenderInfo * info)
     if((!pass) && sculpt_vdw_vis_mode && 
        I->SculptCGO && (I->Obj->Obj.RepVis[cRepCGO])) {
       if(ray) {
-        CGORenderRay(I->SculptCGO, ray,
-                     ColorGet(G, I->Obj->Obj.Color), I->Setting, I->Obj->Obj.Setting);
+        int ok = CGORenderRay(I->SculptCGO, ray,
+			      ColorGet(G, I->Obj->Obj.Color), I->Setting, I->Obj->Obj.Setting);
+	if (!ok){
+	  CGOFree(I->SculptCGO);
+	  CGOFree(I->SculptShaderCGO);
+	  I->SculptShaderCGO = I->SculptCGO = NULL;
+	}
       } else if(G->HaveGUI && G->ValidContext) {
         if(!pick) {
-          CGORenderGL(I->SculptCGO, ColorGet(G, I->Obj->Obj.Color),
-                      I->Setting, I->Obj->Obj.Setting, info, NULL);
+	  int use_shader = SettingGetGlobal_b(G, cSetting_use_shaders);
+	  if (use_shader){
+	    if (!I->SculptShaderCGO){
+	      CGO *convertcgo = NULL;
+	      convertcgo = CGOCombineBeginEnd(I->SculptCGO, 0);
+	      if (convertcgo){
+		I->SculptShaderCGO = CGOOptimizeToVBONotIndexed(convertcgo, 0);
+		I->SculptShaderCGO->use_shader = I->SculptShaderCGO->enable_shaders = true;
+		CGOFree(convertcgo);
+	      }
+	    }
+	  } else if (I->SculptShaderCGO){
+	    CGOFree(I->SculptShaderCGO);
+	    I->SculptShaderCGO = NULL;
+	  }
+	  if (I->SculptShaderCGO){
+	    CGORenderGL(I->SculptShaderCGO, ColorGet(G, I->Obj->Obj.Color),
+			I->Setting, I->Obj->Obj.Setting, info, NULL);
+	  } else {
+	    CGORenderGL(I->SculptCGO, ColorGet(G, I->Obj->Obj.Color),
+			I->Setting, I->Obj->Obj.Setting, info, NULL);
+	  }
         }
       }
     }
@@ -1378,8 +1499,9 @@ void CoordSetRender(CoordSet * I, RenderInfo * info)
                               r->obj->Setting, cSetting_stick_transparency) > 0.0001) {
                 if(pass == -1)
                   r->fRender(r, info);
-              } else if(pass == 1)
+              } else if(pass == 1){
                 r->fRender(r, info);
+              }
               break;
 
             case cRepSurface:
@@ -1389,6 +1511,7 @@ void CoordSetRender(CoordSet * I, RenderInfo * info)
               } else {
                 if(SettingGet_f(G, r->cs->Setting,
                                 r->obj->Setting, cSetting_transparency) > 0.0001) {
+
                   if(pass == -1)
                     r->fRender(r, info);
                 } else if(pass == 1)
@@ -1405,7 +1528,7 @@ void CoordSetRender(CoordSet * I, RenderInfo * info)
               break;
             case cRepEllipsoid:        /* render spheres differently depending on transparency */
               if(SettingGet_f(G, r->cs->Setting,
-                              r->obj->Setting, cSetting_sphere_transparency) > 0.0001) {
+                              r->obj->Setting, cSetting_ellipsoid_transparency) > 0.0001) {
                 if(pass == -1)
                   r->fRender(r, info);
               } else if(pass == 1)
@@ -1426,7 +1549,6 @@ void CoordSetRender(CoordSet * I, RenderInfo * info)
               }
               break;
             }
-
           }
         }
         /*          if(ray)
@@ -1468,6 +1590,7 @@ CoordSet *CoordSetCopy(CoordSet * cs)
     return NULL;
   return (CoordSetCopyImpl(cs));
 }
+
 /*========================================================================*/
 CoordSet *CoordSetCopyImpl(CoordSet * cs)
 {
@@ -1526,47 +1649,59 @@ CoordSet *CoordSetCopyImpl(CoordSet * cs)
 
 
 /*========================================================================*/
-void CoordSetExtendIndices(CoordSet * I, int nAtom)
+int CoordSetExtendIndices(CoordSet * I, int nAtom)
 {
   int a, b;
   ObjectMolecule *obj = I->Obj;
+  int ok = true;
   if(obj->DiscreteFlag) {
     if(obj->NDiscrete < nAtom) {
       VLASize(obj->DiscreteAtmToIdx, int, nAtom);
-      VLASize(obj->DiscreteCSet, CoordSet *, nAtom);
-      for(a = obj->NDiscrete; a < nAtom; a++) {
-        obj->DiscreteAtmToIdx[a] = -1;
-        obj->DiscreteCSet[a] = NULL;
+      CHECKOK(ok, obj->DiscreteAtmToIdx);
+      if (ok)
+	VLASize(obj->DiscreteCSet, CoordSet *, nAtom);
+      CHECKOK(ok, obj->DiscreteCSet);
+      if (ok){
+	for(a = obj->NDiscrete; a < nAtom; a++) {
+	  obj->DiscreteAtmToIdx[a] = -1;
+	  obj->DiscreteCSet[a] = NULL;
+	}
+	obj->NDiscrete = nAtom;
       }
-      obj->NDiscrete = nAtom;
     }
 
     if(I->AtmToIdx) {           /* convert to discrete if necessary */
       VLAFree(I->AtmToIdx);
       I->AtmToIdx = NULL;
-      for(a = 0; a < I->NIndex; a++) {
-        b = I->IdxToAtm[a];
-        obj->DiscreteAtmToIdx[b] = a;
-        obj->DiscreteCSet[b] = I;
+      if (ok){
+	for(a = 0; a < I->NIndex; a++) {
+	  b = I->IdxToAtm[a];
+	  obj->DiscreteAtmToIdx[b] = a;
+	  obj->DiscreteCSet[b] = I;
+	}
       }
     }
   }
-  if(I->NAtIndex < nAtom) {
+  if(ok && I->NAtIndex < nAtom) {
     if(I->AtmToIdx) {
       VLASize(I->AtmToIdx, int, nAtom);
-      if(nAtom) {
-        ErrChkPtr(I->State.G, I->AtmToIdx);
+      CHECKOK(ok, I->AtmToIdx);
+      if(ok && nAtom) {
         for(a = I->NAtIndex; a < nAtom; a++)
           I->AtmToIdx[a] = -1;
       }
       I->NAtIndex = nAtom;
     } else if(!obj->DiscreteFlag) {
       I->AtmToIdx = VLACalloc(int, nAtom);
-      for(a = 0; a < nAtom; a++)
-        I->AtmToIdx[a] = -1;
-      I->NAtIndex = nAtom;
+      CHECKOK(ok, I->AtmToIdx);
+      if (ok){
+	for(a = 0; a < nAtom; a++)
+	  I->AtmToIdx[a] = -1;
+	I->NAtIndex = nAtom;
+      }
     }
   }
+  return ok;
 }
 
 

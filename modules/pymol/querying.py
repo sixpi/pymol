@@ -120,7 +120,7 @@ if __name__=='pymol.querying':
             _self.unlock(r,_self)
         return r
 
-    def get_object_matrix(object,state=1,_self=cmd):
+    def get_object_matrix(object,state=1, incl_ttt=1, _self=cmd):
         '''
 DESCRIPTION
 
@@ -132,7 +132,7 @@ DESCRIPTION
         object = str(object)
         try:
             _self.lock(_self)   
-            r = _cmd.get_object_matrix(_self._COb,str(object), int(state)-1)
+            r = _cmd.get_object_matrix(_self._COb,str(object), int(state)-1, int(incl_ttt))
         finally:
             _self.unlock(r,_self)
         if _raising(r,_self): raise pymol.CmdException
@@ -1315,8 +1315,29 @@ NOTE
         '''
 DESCRIPTION
 
-    "find_pairs" is currently undocumented.
+    API only function. Returns a list of atom pairs. Atoms are represented as
+    (model,index) tuples.
 
+    Can be restricted to hydrogen-bonding-like contacts. WARNING: Only checks
+    atom orientation, not atom type (so would hydrogen bond between carbons for
+    example), so make sure to provide appropriate atom selections.
+
+ARGUMENTS
+
+    selection1, selection2 = string: atom selections
+
+    state1, state2 = integer: state-index (only positive values allowed) {default: 1}
+
+    cutoff = float: distance cutoff {default: 3.5}
+
+    mode = integer: if mode=1, do coarse hydrogen bonding assessment {default: 0}
+
+    angle = float: hydrogen bond angle cutoff, only if mode=1 {default: 45.0}
+
+NOTE
+
+    Although this does a similar job like "distance", it uses a completely
+    different routine and the "mode" argument has different meanings!
         '''
         # preprocess selection
         selection1 = selector.process(selection1)
@@ -1471,5 +1492,33 @@ PYMOL API
         if _raising(r,_self): raise pymol.CmdException
         return r
 
+    def get_object_state(name):
+        '''
+DESCRIPTION
+
+    Returns the effective object state.
+        '''
+        states = cmd.count_states(name)
+        if states < 2 and cmd.get_setting_boolean('static_singletons'):
+            return 1
+        state = cmd.get_setting_int('state', name)
+        if state > states:
+            raise pymol.CmdException('Invalid state %d for object %s' % (state, name))
+        return state
+
+    def get_selection_state(selection):
+        '''
+DESCRIPTION
+
+    Returns the effective object state for all objects in given selection.
+    Raises exception if objects are in different states.
+        '''
+        state_set = set(map(get_object_state,
+            cmd.get_object_list('(' + selection + ')')))
+        if len(state_set) != 1:
+            if len(state_set) == 0:
+                return 1
+            raise pymol.CmdException('Selection spans multiple object states')
+        return state_set.pop()
 
 

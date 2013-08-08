@@ -400,12 +400,14 @@ SEE ALSO
         if _self._raising(r,_self): raise pymol.CmdException            
         return r
 
-    def push_undo(selection, state=0, _self=cmd):
+    def push_undo(selection, just_coordinates=1, finish_undo=0, add_objects=0, delete_objects=0, state=0, _self=cmd):
         '''
 DESCRIPTION
 
     "push_undo" stores the current conformations of objects in the
     selection onto their individual undo rings.
+
+    Notice: This command is only partly implemented in open-source PyMOL.
 
 USAGE
 
@@ -587,7 +589,7 @@ PYMOL API
             r = _cmd.invert(_self._COb,int(quiet))
         finally:
             _self.unlock(r,_self)
-        if _self._raising(r,_self): raise pymol.QuietException            
+        if _self._raising(r,_self): raise cmd.QuietException
         return r
 
     def unbond(atom1="(pk1)", atom2="(pk2)", quiet=1, _self=cmd):
@@ -2440,5 +2442,43 @@ DESCRIPTION
         if _self._raising(r,_self): raise pymol.CmdException
         return r
 
-    import pymol
+    def split_chains(selection='(all)', prefix=None, group=None, quiet=1, _self=cmd):
+        '''
+DESCRIPTION
+
+    Create a single object for each chain in selection
+
+SEE ALSO
+
+    split_states
+        '''
+        count = 0
+        models = _self.get_object_list('(' + selection + ')')
+        names_list = []
+        for model in models:
+            for chain in _self.get_chains('(%s) and model %s' % (selection, model)):
+                count += 1
+                if not prefix:
+                    name = '%s_%s' % (model, chain)
+                else:
+                    name = '%s%04d' % (prefix, count)
+                _self.create(name, '(%s) and model %s and chain "%s"' %
+                        (selection, model, chain), zoom=0)
+                names_list.append(name)
+            _self.disable(model)
+
+        if group:
+            cmd.group(group, ' '.join(names_list), 'add')
+
+    def mse2met(selection='all', quiet=1, _self=cmd):
+        '''
+DESCRIPTION
+
+    Mutate selenomethionine to methionine
+        '''
+        x = _self.alter('(%s) and MSE/SE' % selection, 'name="SD";elem="S"')
+        _self.flag('ignore', '(%s) and resn MSE' % (selection), 'clear')
+        _self.alter('(%s) and resn MSE' % selection, 'resn="MET";type="ATOM"')
+        if not int(quiet):
+            print ' Altered %d MSE residues to MET' % (x)
 

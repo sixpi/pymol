@@ -39,29 +39,8 @@ Z* -------------------------------------------------------------------
 
 #ifndef _PYMOL_NOPY
 #ifdef _PYMOL_NUMPY
-#ifndef NPY_AO
-typedef struct {
-        PyObject_HEAD
-        char *data;             /* pointer to raw data buffer */
-        int nd;                 /* number of dimensions, also called ndim */
-        int *dimensions;       /* size in each dimension */
-        int *strides;          /* bytes to jump to get to the
-                                   next element in each dimension */
-        PyObject *base;         /* This object should be decref'd
-                                   upon deletion of array */
-                                /* For views it points to the original array */
-                                /* For creation from buffer object it points
-                                   to an object that shold be decref'd on
-                                   deletion */
-                                /* For UPDATEIFCOPY flag this is an array
-                                   to-be-updated upon deletion of this one */
-        void *descr;   /* Pointer to type structure */
-        int flags;              /* Flags describing array -- see below*/
-        PyObject *weakreflist;  /* For weakreferences */
-} MyArrayObject;
-#else
+#include <numpy/ndarrayobject.h>
 typedef PyArrayObject MyArrayObject;
-#endif
 #endif
 #endif
 
@@ -1316,19 +1295,6 @@ static PyObject *ObjectMapStateAsPyList(ObjectMapState * I)
 
   PyList_SetItem(result, 14, IsosurfAsPyList(I->Field));
   PyList_SetItem(result, 15, ObjectStateAsPyList(&I->State));
-#if 0
-  int Active;
-  CCrystal *Crystal;
-  int Div[3], Min[3], Max[3], FDim[4];
-  Isofield *Field;
-  float Corner[24];
-  int *Dim;
-  float *Origin;
-  float *Range;
-  float *Grid;
-  float ExtentMin[3], ExtentMax[3];
-#endif
-
   return (PConvAutoNone(result));
 }
 #endif
@@ -1867,9 +1833,6 @@ static void ObjectMapRender(ObjectMap * I, RenderInfo * info)
           if(pick) {
           } else {
             ObjectUseColor(&I->Obj);
-#ifdef PURE_OPENGL_ES_2
-    /* TODO */
-#else
             glDisable(GL_LIGHTING);
 #ifdef _PYMOL_GL_DRAWARRAYS
 	    {
@@ -1970,7 +1933,6 @@ static void ObjectMapRender(ObjectMap * I, RenderInfo * info)
             glEnd();
 #endif
             glEnable(GL_LIGHTING);
-#endif
           }
         }
       }
@@ -2047,9 +2009,7 @@ static void ObjectMapRender(ObjectMap * I, RenderInfo * info)
                 if(gradients) {
                   raw_gradient = (float *) gradients->data;
                 } else {
-#ifndef PURE_OPENGL_ES_2
                   glDisable(GL_LIGHTING);
-#endif
                 }
                 {
                   int ramped = ColorCheckRamped(G, I->Obj.Color);
@@ -2057,9 +2017,6 @@ static void ObjectMapRender(ObjectMap * I, RenderInfo * info)
                   int color = I->Obj.Color;
                   float gt[3];
 
-#ifdef PURE_OPENGL_ES_2
-    /* TODO */
-#else
                   glPointSize(width);
                   glDisable(GL_POINT_SMOOTH);
 #ifdef _PYMOL_GL_DRAWARRAYS
@@ -2172,7 +2129,6 @@ static void ObjectMapRender(ObjectMap * I, RenderInfo * info)
                   glEnd();
 #endif
                 glEnable(GL_POINT_SMOOTH);
-#endif
                 }
               }
             }
@@ -2435,7 +2391,7 @@ static int ObjectMapCCP4StrToMap(ObjectMap * I, char *CCP4Str, int bytes, int st
   ms = &I->State[state];
   ObjectMapStateInit(I->Obj.G, ms);
 
-  normalize = (int) SettingGet(I->Obj.G, cSetting_normalize_ccp4_maps);
+  normalize = SettingGetGlobal_b(I->Obj.G, cSetting_normalize_ccp4_maps);
   maxd = -FLT_MAX;
   mind = FLT_MAX;
   p = CCP4Str;
@@ -3617,8 +3573,8 @@ static int ObjectMapBRIXStrToMap(ObjectMap * I, char *BRIXStr, int bytes, int st
   int normalize;
   int swap_bytes;
 
-  normalize = (int) SettingGet(I->Obj.G, cSetting_normalize_o_maps);
-  swap_bytes = (int) SettingGet(I->Obj.G, cSetting_swap_dsn6_bytes);
+  normalize = SettingGetGlobal_b(I->Obj.G, cSetting_normalize_o_maps);
+  swap_bytes = SettingGetGlobal_b(I->Obj.G, cSetting_swap_dsn6_bytes);
   if(state < 0)
     state = I->NState;
   if(I->NState <= state) {
@@ -4034,7 +3990,7 @@ static int ObjectMapGRDStrToMap(ObjectMap * I, char *GRDStr, int bytes, int stat
   }
   ms = &I->State[state];
   ObjectMapStateInit(I->Obj.G, ms);
-  normalize = (int) SettingGet(I->Obj.G, cSetting_normalize_grd_maps);
+  normalize = SettingGetGlobal_b(I->Obj.G, cSetting_normalize_grd_maps);
   maxd = -FLT_MAX;
   mind = FLT_MAX;
 

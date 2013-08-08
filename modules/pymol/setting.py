@@ -753,7 +753,8 @@ if __name__=='pymol.setting':
         edit_light                         = 707
         suspend_undo                       = 708
         suspend_undo_atom_count            = 709
-        pick_surface                       = 710
+        suspend_deferred                   = 710
+        pick_surface                       = 711
 
     setting_sc = Shortcut(SettingIndex.__dict__.keys())
     
@@ -1035,7 +1036,7 @@ SEE ALSO
                 cmd.log("set %s,%s,%s\n"%(str(name),str(value),str(selection)))
             else:
                 cmd.log("set %s,%s\n"%(str(name),str(value)))            
-        index = _get_index(str(name))
+        index = name if isinstance(name, int) else _get_index(str(name))
         if(index<0):
             print "Error: unknown setting '%s'."%name
             raise QuietException
@@ -1102,7 +1103,6 @@ SEE ALSO
                                      int(state)-1,int(quiet),
                                      int(updates))
                 except:
-                    traceback.print_exc()
                     if(_feedback(fb_module.cmd,fb_mask.debugging,_self)):
                         traceback.print_exc()
                         print "Error: unable to read setting value."
@@ -1366,7 +1366,6 @@ SEE ALSO
             r = _cmd.get_setting_of_type(_self._COb,i,str(object),int(state)-1,2)
         finally:
             _self.unlock(r,_self)
-        if _self._raising(r,_self): raise QuietException
         return r
     
     def get_setting_float(name,object='',state=0,_self=cmd): # INTERNAL

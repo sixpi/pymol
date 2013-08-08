@@ -286,6 +286,9 @@ SEE ALSO
 
     frame
     '''
+        for t in async_threads:
+            t.join()
+
         now = time.time()
         timeout = float(timeout)
         poll = float(poll)
@@ -532,3 +535,38 @@ DESCRIPTION
     This is a dummy function which returns None.
             '''
         return None
+
+    async_threads = []
+
+    def async(func, *args, **kwargs):
+        '''
+DESCRIPTION
+
+    Run function threaded and show "please wait..." message.
+        '''
+        from .wizard.message import Message
+
+        _self = kwargs.pop('_self', cmd)
+
+        wiz = Message(['please wait ...'], dismiss=0, _self=_self)
+        _self.set_wizard(wiz)
+
+        if isinstance(func, str):
+            func = _self.keyword[func][0]
+
+        def wrapper():
+            async_threads.append(t)
+            try:
+                func(*args, **kwargs)
+            except (pymol.CmdException, cmd.QuietException) as e:
+                if e.args:
+                    print e
+            finally:
+                _self.set_wizard_stack(filter(lambda w: w != wiz,
+                    _self.get_wizard_stack()))
+                _self.refresh_wizard()
+                async_threads.remove(t)
+
+        t = threading.Thread(target=wrapper)
+        t.setDaemon(1)
+        t.start()

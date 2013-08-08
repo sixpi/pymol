@@ -1500,7 +1500,7 @@ void AtomInfoBracketResidueFast(PyMOLGlobals * G, AtomInfoType * ai0, int n0, in
 int AtomInfoUpdateAutoColor(PyMOLGlobals * G)
 {
   CAtomInfo *I = G->AtomInfo;
-  if(SettingGet(G, cSetting_auto_color))
+  if(SettingGetGlobal_b(G, cSetting_auto_color))
     I->CColor = ColorGetNext(G);
   else
     I->CColor = ColorGetIndex(G, "carbon");
@@ -2398,10 +2398,16 @@ int *AtomInfoGetSortedIndex(PyMOLGlobals * G, CObject * obj, AtomInfoType * rec,
   int *index;
   int a;
   CSetting *setting = NULL;
+  int ok = true;
   index = Alloc(int, n + 1);
-  ErrChkPtr(G, index);
-  (*outdex) = Alloc(int, n + 1);
-  ErrChkPtr(G, *outdex);
+  CHECKOK(ok, index);
+  if (ok)
+    (*outdex) = Alloc(int, n + 1);
+  CHECKOK(ok, *outdex);
+  if (!ok){
+    FreeP(index);
+    return NULL;
+  }
   if(obj)
     setting = obj->Setting;
 
@@ -3511,7 +3517,7 @@ void AtomInfoAssignParameters(PyMOLGlobals * G, AtomInfoType * I)
     n++;
   if(toupper(*n) != I->elem[0]) {
     pri = 1000;                 /* unconventional atom name -- make no assignments */
-  } else if((int) SettingGet(G, cSetting_pdb_standard_order)) {
+  } else if(SettingGetGlobal_b(G, cSetting_pdb_standard_order)) {
     switch (*n) {
 
     case 'N':
@@ -3958,7 +3964,7 @@ void AtomInfoAssignParameters(PyMOLGlobals * G, AtomInfoType * I)
     break;                      /* default radius for known atoms with unknown radii */
   }
 
-  if(SettingGet(G, cSetting_legacy_vdw_radii)) {        /* ver<0.75, old, incorrect VDW */
+  if(SettingGetGlobal_b(G, cSetting_legacy_vdw_radii)) {        /* ver<0.75, old, incorrect VDW */
     if(!strcmp(e, "N"))
       vdw = 1.8F;               /* slow but compact */
     if(!strcmp(e, "C"))
@@ -3983,11 +3989,6 @@ void AtomInfoAssignParameters(PyMOLGlobals * G, AtomInfoType * I)
 
   if(I->vdw == 0.0)             /* only assigned if not yet assigned */
     I->vdw = vdw;
-
-#if 0
-  if(!I->protons)
-    I->protons = cAN_C;         /* default assumption */
-#endif
 
   if(I->protons == cAN_H)
     I->hydrogen = true;

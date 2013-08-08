@@ -2,6 +2,172 @@
 CHANGE LOG
 =========================================================================
 
+2013-07-31 Thomas Holder <thomas.holder@schrodinger.com>
+
+	* improve amber rst/crd support
+
+	* fix pair_fitting with one atom pair
+
+2013-07-23 Thomas Holder <thomas.holder@schrodinger.com>
+
+	* fix numpy/ndarrayobject.h import
+
+	* setup.py: add --osx-frameworks agument
+
+	* rpc server: use register_instance
+
+2013-07-16 Thomas Holder <thomas.holder@schrodinger.com>
+
+	* fixed load_traj with stop/max arguments.
+	  Thanks to David Osguthorpe for the patch.
+
+	* fix pymol.importing.read_mmodstr
+
+	* proper numpy support (ObjectMap.c)
+
+	* take out broken experimenting.expfit
+
+	* fetch_path: graceful error handling when writing file fails
+
+2013-07-15 Blaine Bell <blaine.bell@schrodinger.com>
+
+	* fixed flickering ortho problems on some machines
+
+2013-06-21 Blaine Bell <blaine.bell@schrodinger.com>
+
+	* fixed selection indicators
+
+2013-06-18 Blaine Bell, Thomas Holder
+
+	* fixed loading in bg_rgb settings from old project pse files
+
+	* add URL support for run command
+
+2013-06-13 Blaine Bell <blaine.bell@schrodinger.com>
+
+	* fixed labels when use_shaders is 0 and show_frame_rate is on
+
+2013-06-12 Thomas Holder <thomas.holder@schrodinger.com>
+
+	* update APBS Tools plugin
+
+	* fix spectrumany when minimum/maximum are provided
+
+2013-06-11 Blaine Bell <blaine.bell@schrodinger.com>
+
+	* Open Source PyMOL v1.6.0.0
+
+	* freeing VBOs properly when deleting volumes
+
+	* added quiet flag for SettingGenerateSideEffects() and SettingCheckUseShaders()
+
+	* fix 15bit color picking
+
+	* fix surface memory leak
+
+	* fix CGO demo
+
+2013-06-10 Thomas Holder <thomas.holder@schrodinger.com>
+
+	* internal.file_read: use urllib2 instead of urllib
+
+	* fix ellipsoid transparency OpenGL rendering
+
+2013-05-27 Thomas Holder, Blaine Bell
+
+	* fix surface normals
+
+	* fix Scripts ending with ...pymol.py do not execute
+	  https://sourceforge.net/p/pymol/bugs/46/
+
+	* several CGO fixes
+
+	* several python fixes
+
+2013-04-26 Thomas Holder <thomas.holder@schrodinger.com>
+
+	* refactored importing.fetch
+
+	* spectrum enhancements (arbitrary expressions and colors)
+
+	* pymol2.cmd2: implement proxy pattern
+
+	* chempy model improvements
+
+	* fix bg_color, which sometimes did not apply instantly
+
+2013-04-17 Thomas Holder <thomas.holder@schrodinger.com>
+
+	* support full path for "matrix" argument
+	  https://sourceforge.net/p/pymol/patches/4/
+
+	* use PyMOL API in pymol.rpc module
+	  https://sourceforge.net/p/pymol/patches/3/
+
+	* doc string for cmd.find_pairs
+	  https://sourceforge.net/p/pymol/patches/2/
+
+2013-04-12 Blaine Bell <blaine.bell@schrodinger.com>, Thomas Holder <thomas.holder@schrodinger.com>
+
+	* rotate ANISOU vector when transforming objects
+
+	* new command: split_chains
+
+	* fix create/extract bug with movie
+
+	* fixed cartoon VBO memory leak
+
+	* always draw rounded caps with sticks shaders
+
+	* several shader fixes and performance improvements
+
+	* fixed screen z-offset for labels
+
+2013-03-22 Blaine Bell <blaine.bell@schrodinger.com>, Thomas Holder <thomas.holder@schrodinger.com>
+
+	* improved rendering performance using shaders, including
+	  dynamically updated shaders based on settings
+	  (see data/shaders directory)
+
+	* implemented shaders for menus, labels, selection indicators,
+	  background, and other graphics that were not using shaders.
+
+	* consolidated textures used for labels and selection indicators
+	  to one texture, which helps performance
+
+	* added memory checking to help avoid crashing when memory is
+	  low or not available
+
+	* cleaned up code base, took out extraneous preprocessor code and
+	  code that was not used.
+
+	* refactor pmg_tk.Settings
+
+	* Do not clear atom names with chempy.champ.assign.amber99
+
+	* fix some plugin manager exception handling
+
+	* fix create with name=None
+
+	* Plugin override search path: Always include "startup"
+	  from installation directory in plugin search path
+
+	* Movie > Program > Scene Loop > Nutate > by degrees
+
+	* ObjectMeshRenderImpl refactoring: color isomesh and isodot with
+	  mesh_color and dot_color settings
+
+	* merging alignment objects: eliminate orphaned atoms
+
+	* fix cealign alignment object creation: rms_cur arguments swapped
+
+	* improved the alignto command to take additional keyword arguments
+	  which get passed to the used method -> object=aln supported now
+
+	* remove _PYMOL_MODULE constant
+
+	* fix LITERAL mode command parsing: ignore leading whitespace
+
 2013-02-14 Thomas Holder <thomas.holder@schrodinger.com>
 
 	* enable VMD plugins by default

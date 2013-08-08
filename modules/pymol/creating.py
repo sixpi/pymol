@@ -1050,7 +1050,7 @@ ARGUMENTS
 
     source_state = integer: {default: 0 -- copy all states}
 
-    target_state = integer: {default: 0}
+    target_state = integer: -1 appends after last state {default: 0}
 
 PYMOL API
 
@@ -1068,22 +1068,16 @@ SEE ALSO
     load, copy, extract
         '''
         r = DEFAULT_ERROR
+        target_state = int(target_state)
+        if target_state == -1:
+            target_state = _self.count_states('?' + name) + 1
         # preprocess selection
         selection = selector.process(selection)
         #      
         try:
             _self.lock(_self)
             if name==None:
-                avoid = {}
-                for obj in cmd.get_names("all"):
-                    avoid[obj] = 1
-                sel_cnt = _cmd.get(_self._COb,"sel_counter") 
-                while 1:
-                    sel_cnt = sel_cnt + 1.0
-                    name = "obj%02.0f" % sel_cnt
-                    if not avoid.has_key(name):
-                        _cmd.legacy_set(_self._COb,"sel_counter","%1.0f" % sel_cnt)
-                        break
+                name = _self.get_unused_name("obj")
             r = _cmd.create(_self._COb,str(name),"("+str(selection)+")",
                             int(source_state)-1,int(target_state)-1,
                             int(discrete),int(zoom),int(quiet),int(singletons))
